@@ -16,7 +16,7 @@ from pydantic import AnyHttpUrl, BaseModel, Field
 from maibot_sdk import Field as SDKField
 from maibot_sdk import PluginConfigBase
 
-# ── 路径（基于插件目录，不使用 nonebot_plugin_localstore）──
+# ── 路径（资源随插件目录，运行数据走运行时目录）──
 BASE_DIR = Path(__file__).resolve().parent
 CACHE_DIR = BASE_DIR / ".cache"
 BG_PRELOAD_CACHE_DIR = CACHE_DIR / "bg_preload"
@@ -25,6 +25,18 @@ ASSETS_PATH = RES_PATH / "assets"
 TEMPLATE_PATH = RES_PATH / "templates"
 DEFAULT_BG_PATH = ASSETS_PATH / "default_bg_0.webp"
 DEFAULT_AVATAR_PATH = ASSETS_PATH / "default_avatar.webp"
+
+RUNTIME_DIR: Path | None = None
+
+
+def apply_runtime_paths(runtime_dir: str | Path | None) -> None:
+    """注入 Runner 分配的运行时目录，背景缓存改写其下（插件目录只读）。"""
+    global RUNTIME_DIR, BG_PRELOAD_CACHE_DIR
+    if runtime_dir is None:
+        return
+    RUNTIME_DIR = Path(runtime_dir)
+    BG_PRELOAD_CACHE_DIR = RUNTIME_DIR / "bg_preload"
+
 
 ProcSortByType = Literal["cpu", "mem"]
 
@@ -40,10 +52,9 @@ class ConfigModel(BaseModel):
     proxy: str | None = None
     ps_template: str = "default"
     ps_command: list[str] = ["状态", "status"]
-    ps_only_su: bool = False
+    ps_only_su: bool = True
     ps_need_at: bool = False
     ps_reply_target: bool = True
-    ps_req_timeout: int | None = 10
     # endregion
 
     # region style
@@ -154,8 +165,8 @@ class BehaviorSection(PluginConfigBase):
         json_schema_extra={"label": "触发指令", "order": 0},
     )
     ps_only_su: bool = SDKField(
-        default=False,
-        description="是否仅允许管理员使用。",
+        default=True,
+        description="是否仅允许管理员使用（默认开启，需配合 admin.superusers）。",
         json_schema_extra={"label": "仅管理员", "order": 1},
     )
     ps_need_at: bool = SDKField(
@@ -208,15 +219,43 @@ class StyleSection(PluginConfigBase):
     )
 
 
+class FilterSection(PluginConfigBase):
+    __ui_label__: ClassVar = "过滤"
+    __ui_order__: ClassVar = 4
+
+    ps_ignore_parts: list[str] = SDKField(
+        default_factory=list,
+        description="忽略的磁盘分区正则（匹配挂载点）。",
+        json_schema_extra={"label": "忽略分区", "order": 0},
+    )
+    ps_ignore_disk_ios: list[str] = SDKField(
+        default_factory=lambda: [r"^(loop|zram)\d*$"],
+        description="忽略的磁盘 IO 设备正则。",
+        json_schema_extra={"label": "忽略磁盘 IO", "order": 1},
+    )
+    ps_ignore_nets: list[str] = SDKField(
+        default_factory=lambda: [r"^lo(op)?\d*$|^(Loopback|本地连接)"],
+        description="忽略的网卡正则。",
+        json_schema_extra={"label": "忽略网卡", "order": 2},
+    )
+    ps_ignore_procs: list[str] = SDKField(
+        default_factory=lambda: ["^System Idle Process$"],
+        description="忽略的进程名正则。",
+        json_schema_extra={"label": "忽略进程", "order": 3},
+    )
+
+
 class PicStatusConfig(PluginConfigBase):
     plugin: PluginSection = SDKField(default_factory=PluginSection)
     admin: AdminSection = SDKField(default_factory=AdminSection)
     behavior: BehaviorSection = SDKField(default_factory=BehaviorSection)
     style: StyleSection = SDKField(default_factory=StyleSection)
+    filter: FilterSection = SDKField(default_factory=FilterSection)
 
     def to_config_model(self) -> dict:
         """把 MaiBot 强类型配置转成内部 ``ConfigModel`` 所需的字段字典。"""
         b = self.behavior
+        f = self.filter
         return {
             "proxy": None,
             "ps_template": b.ps_template,
@@ -224,11 +263,16 @@ class PicStatusConfig(PluginConfigBase):
             "ps_only_su": b.ps_only_su,
             "ps_need_at": b.ps_need_at,
             "ps_reply_target": b.ps_reply_target,
-            "ps_req_timeout": b.ps_req_timeout,
+            # 站点连通性测试超时统一走内部 ps_test_timeout
+            "ps_test_timeout": b.ps_req_timeout if b.ps_req_timeout is not None else 3,
             "ps_collect_interval": b.ps_collect_interval,
             "ps_bot_qq": str(b.ps_bot_qq or "").strip(),
             "ps_bg_provider": self.style.ps_bg_provider,
             "ps_bg_preload_count": self.style.ps_bg_preload_count,
+            "ps_ignore_parts": list(f.ps_ignore_parts),
+            "ps_ignore_disk_ios": list(f.ps_ignore_disk_ios),
+            "ps_ignore_nets": list(f.ps_ignore_nets),
+            "ps_ignore_procs": list(f.ps_ignore_procs),
             "superusers": set(str(x).strip() for x in self.admin.superusers if str(x).strip()),
             "nickname": set(str(x).strip() for x in self.admin.nickname if str(x).strip()),
         }

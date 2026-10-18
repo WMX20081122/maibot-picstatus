@@ -11,11 +11,14 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import re
+import tomllib
+from pathlib import Path
 from typing import Any
 
 from maibot_sdk import Command, HookHandler, MaiBotPlugin
 
-__version__ = "2.3.2"
+__version__ = "2.3.3"
 
 from . import config as cfg_mod
 from . import misc_statistics
@@ -28,11 +31,28 @@ from .collectors import (
     load_builtin_collectors,
     registered_collectors,
 )
-from .config import PicStatusConfig, apply_config
+from .config import PicStatusConfig, apply_config, apply_runtime_paths
 from .templates import load_builtin_templates, loaded_templates
 from .templates.render import register_png_renderer
 
 logger = logging.getLogger("plugin.WMX20081122.maibot-picstatus")
+
+DEFAULT_COMMANDS = ["状态", "status"]
+
+
+def _load_configured_commands() -> list[str]:
+    """读取 config.toml 的 [behavior].ps_command；@Command 正则在导入期求值。"""
+    try:
+        with (Path(__file__).resolve().parent / "config.toml").open("rb") as fp:
+            raw = tomllib.load(fp)
+        commands = [str(item).strip() for item in (raw.get("behavior") or {}).get("ps_command") or []]
+    except Exception:
+        logger.debug("读取自定义触发指令失败，使用默认指令", exc_info=True)
+        commands = []
+    return [item for item in commands if item] or DEFAULT_COMMANDS
+
+
+COMMAND_PATTERN = r"^\s*(?:" + "|".join(re.escape(item) for item in _load_configured_commands()) + r")\s*$"
 
 
 class PicStatusPlugin(MaiBotPlugin):
@@ -41,11 +61,20 @@ class PicStatusPlugin(MaiBotPlugin):
     def __init__(self) -> None:
         super().__init__()
         self._collect_task: asyncio.Task | None = None
+        self._avatar_tasks: set[asyncio.Task] = set()
         self._png_renderer_registered = False
+
+    def _spawn(self, coro) -> None:
+        """创建后台任务并保留引用，卸载时统一取消。"""
+        task = asyncio.create_task(coro)
+        self._avatar_tasks.add(task)
+        task.add_done_callback(self._avatar_tasks.discard)
 
     async def on_load(self) -> None:
         # 由强类型配置同步到内部 ConfigModel（模块级 config 引用恒定）
         apply_config(self.config.to_config_model())
+        # 运行数据（背景缓存）写入 Runner 分配的运行时目录，不污染插件安装目录
+        apply_runtime_paths(self.ctx.paths.runtime_dir)
         cfg = cfg_mod.config
 
         # 注入机器人自身上下文（self_id + 昵称）
@@ -55,21 +84,21 @@ class PicStatusPlugin(MaiBotPlugin):
         if str(cfg.ps_bot_qq or "").strip():
             self_id = str(cfg.ps_bot_qq).strip()
             misc_statistics.set_bot_context(self_id, nick)
-            asyncio.create_task(self._load_avatar(self_id))
+            self._spawn(self._load_avatar(self_id))
         else:
-            if self._ctx is not None and hasattr(self._ctx, "api") and hasattr(self._ctx.api, "call"):
+            if hasattr(self.ctx, "api") and hasattr(self.ctx.api, "call"):
                 try:
-                    info = await self._ctx.api.call("adapter.napcat.system.get_login_info")
+                    info = await self.ctx.api.call("adapter.napcat.system.get_login_info")
                     data = (info or {}).get("data") if isinstance(info, dict) else None
                     self_id = str((data or {}).get("user_id") or "local")
                 except Exception as e:
                     logger.warning("获取登录信息失败，使用 local self_id: %s", e)
             misc_statistics.set_bot_context(self_id, nick)
             # 异步拉取真实 QQ 头像（失败静默，BOT_AVATARS 回退默认头像）
-            asyncio.create_task(self._load_avatar(self_id))
+            self._spawn(self._load_avatar(self_id))
             # 若加载时适配器未就绪导致 self_id 为 local，后台持续尝试解析真实 self_id
             if self_id == "local":
-                asyncio.create_task(self._ensure_real_self_id(nick))
+                self._spawn(self._ensure_real_self_id(nick))
 
         # 加载模板与采集器
         if cfg.ps_template not in loaded_templates:
@@ -105,6 +134,10 @@ class PicStatusPlugin(MaiBotPlugin):
         if self._collect_task is not None:
             self._collect_task.cancel()
             self._collect_task = None
+        # 取消头像 / self_id 补全等后台任务
+        for t in list(self._avatar_tasks):
+            t.cancel()
+        self._avatar_tasks.clear()
         # 清理背景预载任务
         for t in list(getattr(bg_preloader, "fire_tasks", set())):
             t.cancel()
@@ -189,11 +222,11 @@ class PicStatusPlugin(MaiBotPlugin):
 
     async def _ensure_real_self_id(self, nick: str | None, attempts: int = 10) -> None:
         """适配器就绪后解析真实 self_id 并拉取头像（替换 local 占位）。"""
-        if self._ctx is None or not (hasattr(self._ctx, "api") and hasattr(self._ctx.api, "call")):
+        if not (hasattr(self.ctx, "api") and hasattr(self.ctx.api, "call")):
             return
         for _ in range(max(1, attempts)):
             try:
-                info = await self._ctx.api.call("adapter.napcat.system.get_login_info")
+                info = await self.ctx.api.call("adapter.napcat.system.get_login_info")
                 data = (info or {}).get("data") if isinstance(info, dict) else None
                 real = str((data or {}).get("user_id") or "").strip()
                 if not real or real == "local":
@@ -212,7 +245,7 @@ class PicStatusPlugin(MaiBotPlugin):
     @Command(
         "状态",
         description="以图片显示当前设备运行状态",
-        pattern=r"^\s*(状态|status)\s*$",
+        pattern=COMMAND_PATTERN,
     )
     async def cmd_status(self, stream_id: str = "", **kwargs: Any) -> tuple:
         if not stream_id:

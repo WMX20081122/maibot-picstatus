@@ -7,7 +7,7 @@ import jinja2
 from pydantic import BaseModel
 
 from ...config import BASE_DIR, DEFAULT_AVATAR_PATH, RES_PATH, config
-from ...util import debug, flatten
+from ...util import flatten
 from .. import pic_template
 from ..render import html_to_png, register_global_filter_to
 
@@ -143,9 +143,6 @@ async def default(collected: dict[str, Any], bg: "BgBytesData", **_) -> bytes:
         css_content=css_content,
         bg_base64=bg_base64,
     )
-
-    if debug.enabled:
-        debug.write(html, "default_{time}.html")
 
     return await html_to_png(
         html=html,

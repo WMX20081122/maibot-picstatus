@@ -16,7 +16,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, NamedTuple, TypeAlias
 
-from .config import ASSETS_PATH, BG_PRELOAD_CACHE_DIR, DEFAULT_BG_PATH, config
+from . import config as cfg_mod
+from .config import ASSETS_PATH, DEFAULT_BG_PATH, config
 
 logger = logging.getLogger("WMX20081122_maibot-picstatus")
 
@@ -107,8 +108,9 @@ async def fetch_bg(num: int) -> AsyncIterable[BgData]:
 def cache_bg(bg: BgBytesData) -> BgFileData:
     if not bg.data:
         return BgFileData(None, bg.mime)
-    BG_PRELOAD_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    path = BG_PRELOAD_CACHE_DIR / f"{time.time_ns()}.{bg.mime.split('/')[-1]}"
+    cache_dir = cfg_mod.BG_PRELOAD_CACHE_DIR
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path = cache_dir / f"{time.time_ns()}.{bg.mime.split('/')[-1]}"
     path.write_bytes(bg.data)
     return BgFileData(path, bg.mime)
 
@@ -118,7 +120,7 @@ def read_cached_bg_file(bg: BgFileData) -> BgBytesData | None:
         return BgBytesData(None, bg.mime)
     with warning_suppress("Failed to read cached file"):
         data = bg.path.read_bytes()
-        if bg.path.is_relative_to(BG_PRELOAD_CACHE_DIR):
+        if bg.path.is_relative_to(cfg_mod.BG_PRELOAD_CACHE_DIR):
             with warning_suppress("Failed to unlink cached file"):
                 bg.path.unlink()
         return BgBytesData(data, bg.mime)

@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "id": "WMX20081122.maibot-picstatus",
-  "version": "2.3.2",
+  "version": "2.3.3",
   "name": "PicStatus-Re",
   "description": "以图片形式显示当前设备的运行状态（CPU、内存、磁盘、网络、进程等）。MaiBot 移植版，迁移来源：nonebot-plugin-picstatus（作者 yuexps）。",
   "author": {
@@ -16,11 +16,11 @@
     "issues": "https://github.com/WMX20081122/maibot-picstatus/issues"
   },
   "host_application": {
-    "min_version": "1.0.0",
-    "max_version": "1.99.99"
+    "min_version": "1.3.0",
+    "max_version": "1.3.99"
   },
   "sdk": {
-    "min_version": "2.0.0",
+    "min_version": "2.12.0",
     "max_version": "2.99.99"
   },
   "dependencies": [

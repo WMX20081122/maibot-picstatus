@@ -7,9 +7,7 @@ from __future__ import annotations
 
 import logging
 import re
-import time
 from functools import partial
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 logger = logging.getLogger("WMX20081122_maibot-picstatus")
@@ -100,20 +98,3 @@ def flatten(iterable):
             yield from flatten(item)
         else:
             yield item
-
-
-class DebugFileWriter:
-    def __init__(self, path, prefix: str = "") -> None:
-        self.path = Path(path)
-        self.prefix = prefix
-        self.enabled = False
-
-    def write(self, content, filename: str | None = None) -> None:
-        if not self.enabled:
-            return
-        self.path.mkdir(parents=True, exist_ok=True)
-        fname = filename or f"{self.prefix}_{int(time.time())}.txt"
-        (self.path / fname).write_text(str(content), encoding="utf-8")
-
-
-debug = DebugFileWriter(Path.cwd() / "debug", "picstatus")

@@ -4,6 +4,7 @@ config_back/
 
 data/
 debug/
+.cache/
 fonts/*.ttf
 fonts/*.ttc
 fonts/*.otf

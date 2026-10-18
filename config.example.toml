@@ -9,17 +9,17 @@ superusers = []
 nickname = []
 
 [behavior]
-# 触发指令（任一命中即生成状态图）
+# 触发指令（任一命中即生成状态图；修改后需重载插件生效）
 ps_command = ["状态", "status"]
-# 仅管理员可用
-ps_only_su = false
+# 仅管理员可用（默认开启，记得在 admin.superusers 里配置管理员 QQ）
+ps_only_su = true
 # 需要 @机器人 才触发
 ps_need_at = false
 # 回复触发者
 ps_reply_target = true
 # 渲染模板名
 ps_template = "default"
-# 采集超时（秒）
+# 站点连通性测试超时（秒）
 ps_req_timeout = 10
 # 后台周期采集间隔（秒）
 ps_collect_interval = 5
@@ -27,7 +27,17 @@ ps_collect_interval = 5
 ps_bot_qq = ""
 
 [style]
-# 背景来源：local=插件内置图
+# 背景来源：local=插件内置图 / none=无背景
 ps_bg_provider = "local"
 # 启动预加载背景数量
 ps_bg_preload_count = 2
+
+[filter]
+# 忽略的磁盘分区正则（匹配挂载点）
+ps_ignore_parts = []
+# 忽略的磁盘 IO 设备正则
+ps_ignore_disk_ios = ["^(loop|zram)\\d*$"]
+# 忽略的网卡正则
+ps_ignore_nets = ["^lo(op)?\\d*$|^(Loopback|本地连接)"]
+# 忽略的进程名正则
+ps_ignore_procs = ["^System Idle Process$"]
