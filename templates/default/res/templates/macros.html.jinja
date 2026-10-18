@@ -1,0 +1,236 @@
+{% macro header(d) %}
+<div class="card header">
+  {% for info in d.bots %}
+  <div class="account">
+    <div class="account-left">
+      <img class="avatar" src="data:image/webp;base64,{{ d.bot_avatars[info.self_id] }}" />
+      <div class="description">
+        <div class="nickname">{{ info.nick }}</div>
+        <div class="label-container">
+          <span class="label purple">{{ info.adapter }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="account-mid">
+      <div class="metric-item">
+        <span class="num blue">{{ info.msg_rec }}</span>
+        <span class="lbl">收消息</span>
+      </div>
+      <div class="metric-item">
+        <span class="num orange">{{ info.msg_sent }}</span>
+        <span class="lbl">发消息</span>
+      </div>
+    </div>
+    <div class="account-right">
+      <div class="label-container">
+        <span class="label green">Bot 已连接 {{ info.bot_connected }}</span>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  <div class="extra-footer">
+    <table class="extra-footer-table">
+      <tbody>
+        <tr>
+          <td class="align-left">MaiBot {{ d.nonebot_version }} × PicStatus {{ d.ps_version }}</td>
+          <td class="align-center">MaiBot 运行 {{ d.nonebot_run_time }}</td>
+          <td class="align-right">系统运行 {{ d.system_run_time }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro cpu_mem(d) %}
+{% if d.cpu_count %}{% set count = d.cpu_count %}{% else %}{% set count = '??' %}{% endif %}
+{% if d.cpu_count_logical %}{% set logical = d.cpu_count_logical %}{% else %}{% set logical = '??' %}{% endif %}
+{% set freq = d.cpu_freq | format_cpu_freq %}
+{% if d.memory_stat %}{% set ram_pct = d.memory_stat.percent %}{% set ram_desc = "{} / {}".format(d.memory_stat.used | auto_convert_unit, d.memory_stat.total | auto_convert_unit) %}{% else %}{% set ram_pct = None %}{% set ram_desc = "获取失败" %}{% endif %}
+{% if d.swap_stat %}{% set swap_pct = d.swap_stat.percent %}{% set swap_desc = "{} / {}".format(d.swap_stat.used | auto_convert_unit, d.swap_stat.total | auto_convert_unit) %}{% else %}{% set swap_pct = None %}{% set swap_desc = "获取失败" %}{% endif %}
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">系统硬件</span>
+  </div>
+  <div class="cpu-mem-usage">
+    <div class="usage-item">
+      <div class="usage-header">
+        <span class="usage-title">CPU</span>
+        {% if d.cpu_percent != None %}
+        <span class="usage-percent-val">{{ '{0:.0f}%'.format(d.cpu_percent) }}</span>
+        {% endif %}
+      </div>
+      <div class="progress-bar">
+        {% if d.cpu_percent != None %}
+        <div class="progress {{ d.cpu_percent | percent_to_color }}" style="width: {{ d.cpu_percent }}%"></div>
+        {% endif %}
+      </div>
+      <div class="usage-desc-stacked">{{ count }}核 {{ logical }}线程 {{ freq }} | {{ d.cpu_brand }}</div>
+    </div>
+
+    <div class="usage-item">
+      <div class="usage-header">
+        <span class="usage-title">RAM</span>
+        {% if ram_pct != None %}
+        <span class="usage-percent-val">{{ '{0:.0f}%'.format(ram_pct) }}</span>
+        {% endif %}
+      </div>
+      <div class="progress-bar">
+        {% if ram_pct != None %}
+        <div class="progress color-ram" style="width: {{ ram_pct }}%"></div>
+        {% endif %}
+      </div>
+      <div class="usage-desc-stacked">内存已使用 {{ ram_desc }}</div>
+    </div>
+
+    <div class="usage-item">
+      <div class="usage-header">
+        <span class="usage-title">SWAP</span>
+        {% if swap_pct != None %}
+        <span class="usage-percent-val">{{ '{0:.0f}%'.format(swap_pct) }}</span>
+        {% endif %}
+      </div>
+      <div class="progress-bar">
+        {% if swap_pct != None %}
+        <div class="progress color-swap" style="width: {{ swap_pct }}%"></div>
+        {% endif %}
+      </div>
+      <div class="usage-desc-stacked">交换分区已使用 {{ swap_desc }}</div>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro disk(d) %}
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">存储空间</span>
+  </div>
+  <div class="disk-usage-list">
+    {% for it in d.disk_usage or [] %}
+    <div class="disk-item">
+      <div class="disk-header">
+        <span class="disk-title">{{ it.name }}</span>
+        {% if not it.exception %}
+        <span class="disk-percent-val {{ 'disk-high-load' if it.percent and it.percent > 80 else '' }}">
+          {%- if it.percent %}{{ '{0:.1f}%'.format(it.percent) }}
+          {%- else %}??.%{% endif -%}
+        </span>
+        {% endif %}
+      </div>
+      <div class="progress-bar">
+        {% if it.exception %}
+        <div class="error">{{ it.exception }}</div>
+        {% else %}
+        <div class="progress {{ it.percent | percent_to_color }}" style="width: {{ it.percent }}%"></div>
+        {% endif %}
+      </div>
+      <div class="disk-desc-stacked">
+        {% if not it.exception %}
+        容量已使用 {{ it.used | auto_convert_unit }} / {{ it.total | auto_convert_unit }}
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% if d.disk_io %}
+  <table class="list-table disk-io-table">
+    <thead>
+      <tr class="table-header-row">
+        <th class="align-left">硬盘名称</th>
+        <th class="align-left">读取</th>
+        <th class="align-left">写入</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in d.disk_io or [] %}
+      {% set is_idle = (it.read == 0 and it.write == 0) %}
+      <tr class="table-row {{ 'even' if loop.index0 % 2 == 0 else 'odd' }} {{ 'idle-io' if is_idle else '' }}">
+        <td class="disk-name">{{ it.name }}</td>
+        <td class="col-val align-left">{{ it.read | auto_convert_unit(suffix='/s') }}</td>
+        <td class="col-val align-left">{{ it.write | auto_convert_unit(suffix='/s') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro network(d) %}
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">网络流量</span>
+  </div>
+  <table class="list-table net-test-table">
+    <tbody>
+      {% for it in d.network_connection or [] %}
+      {% set is_high_delay = (it.delay and it.delay > 200) %}
+      <tr class="table-row {{ 'even' if loop.index0 % 2 == 0 else 'odd' }} {{ 'high-delay-row' if is_high_delay or it.error else '' }}">
+        <td class="site-name">{{ it.name }}</td>
+        {% if it.error %}
+        <td colspan="2" class="error align-left">{{ it.error }}</td>
+        {% else %}
+        <td class="site-status align-left">{{ it.status }} {{ it.reason }}</td>
+        <td class="site-delay align-left">{{ '{0:.2f}ms'.format(it.delay) }}</td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <table class="list-table network-io-table">
+    <thead>
+      <tr class="table-header-row">
+        <th class="align-left">网卡名称</th>
+        <th class="align-left">上传</th>
+        <th class="align-left">下载</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in d.network_io or [] %}
+      {% set is_idle = (it.sent == 0 and it.recv == 0) %}
+      <tr class="table-row {{ 'even' if loop.index0 % 2 == 0 else 'odd' }} {{ 'idle-io' if is_idle else '' }}">
+        <td class="net-name">{{ it.name }}</td>
+        <td class="col-val align-left net-up">{{ it.sent | auto_convert_unit(suffix='/s') }}</td>
+        <td class="col-val align-left net-down">{{ it.recv | auto_convert_unit(suffix='/s') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{% macro process(d) %}
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">应用进程</span>
+  </div>
+  <table class="list-table proc-table">
+    <thead>
+      <tr class="table-header-row">
+        <th class="align-left">进程名称</th>
+        <th class="align-left">CPU</th>
+        <th class="align-left">内存</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in d.process_status or [] %}
+      {% set is_high_load = (it.cpu and it.cpu > 10.0) %}
+      {% set is_low_load = (it.cpu < 1.0 and it.mem < 100 * 1024 * 1024) %}
+      <tr class="table-row {{ 'even' if loop.index0 % 2 == 0 else 'odd' }} {{ 'high-load-proc' if is_high_load else '' }} {{ 'low-load-proc' if is_low_load else '' }}">
+        <td class="proc-name">{{ it.name }}</td>
+        <td class="col-val align-left CPU-val">{{ '{0:.1f}%'.format(it.cpu) }}</td>
+        <td class="col-val align-left MEM-val">{{ it.mem | auto_convert_unit }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{% macro footer(d) %}
+<div class="footer">
+  {{ d.time }}<br />
+  {{ d.python_version }} | {{ d.system_name }}
+</div>
+{% endmacro %}

@@ -1,0 +1,33 @@
+[plugin]
+enabled = true
+config_version = "1.0.0"
+
+[admin]
+# 管理员 QQ 号（ps_only_su 开启时仅其可用）
+superusers = []
+# 机器人昵称（ps_need_at 开启时用于识别 @）
+nickname = []
+
+[behavior]
+# 触发指令（任一命中即生成状态图）
+ps_command = ["状态", "status"]
+# 仅管理员可用
+ps_only_su = false
+# 需要 @机器人 才触发
+ps_need_at = false
+# 回复触发者
+ps_reply_target = true
+# 渲染模板名
+ps_template = "default"
+# 采集超时（秒）
+ps_req_timeout = 10
+# 后台周期采集间隔（秒）
+ps_collect_interval = 5
+# 机器人 QQ 号：填写后直接调用外部 qlogo API 下载头像，不依赖适配器
+ps_bot_qq = ""
+
+[style]
+# 背景来源：local=插件内置图
+ps_bg_provider = "local"
+# 启动预加载背景数量
+ps_bg_preload_count = 2
